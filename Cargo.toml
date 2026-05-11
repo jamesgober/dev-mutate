@@ -1,0 +1,46 @@
+[package]
+name = "dev-mutate"
+version = "0.9.0"
+edition = "2021"
+rust-version = "1.85"
+readme = "README.md"
+license = "Apache-2.0"
+
+authors = [
+    "James Gober <me@jamesgober.com>"
+]
+
+description = "Mutation testing for Rust. Wraps cargo-mutants. Test-suite quality verification via deliberate code mutations. Part of the dev-* verification suite."
+
+keywords = [
+    "mutation",
+    "testing",
+    "test-quality",
+    "verification",
+    "ai-tools"
+]
+
+categories = [
+    "development-tools",
+    "development-tools::testing"
+]
+
+documentation = "https://docs.rs/dev-mutate"
+repository = "https://github.com/jamesgober/dev-mutate"
+homepage = "https://github.com/jamesgober/dev-mutate"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+dev-report = { version = "0.9", path = "../dev-report" }
+
+[dev-dependencies]
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 3
+lto = "thin"
