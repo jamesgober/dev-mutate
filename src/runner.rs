@@ -211,12 +211,7 @@ pub(crate) fn parse_outcomes(
     // Deterministic ordering for diff-friendly output.
     survivors.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
-    let mut files = aggregate_breakdown(
-        &survivors,
-        &by_file_killed,
-        &by_file_survived,
-        &by_file_timeout,
-    );
+    let mut files = aggregate_breakdown(&by_file_killed, &by_file_survived, &by_file_timeout);
     files.sort_by(|a, b| a.file.cmp(&b.file));
 
     Ok(MutateResult {
