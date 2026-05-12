@@ -1,6 +1,6 @@
 [package]
 name = "dev-mutate"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2021"
 rust-version = "1.85"
 readme = "README.md"
@@ -10,14 +10,14 @@ authors = [
     "James Gober <me@jamesgober.com>"
 ]
 
-description = "Mutation testing for Rust. Wraps cargo-mutants. Test-suite quality verification via deliberate code mutations. Part of the dev-* verification suite."
+description = "Mutation testing for Rust. Wraps cargo-mutants: kill rate, surviving-mutant evidence, kill-rate threshold gating. Detects tests that pass without asserting. Part of the dev-* verification collection."
 
 keywords = [
     "mutation",
     "testing",
+    "cargo-mutants",
     "test-quality",
-    "verification",
-    "ai-tools"
+    "ci"
 ]
 
 categories = [
