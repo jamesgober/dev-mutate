@@ -426,12 +426,10 @@ impl std::error::Error for MutateError {}
 // ---------------------------------------------------------------------------
 
 pub(crate) fn aggregate_breakdown(
-    survivors: &[SurvivingMutant],
     by_file_killed: &BTreeMap<String, u64>,
     by_file_survived: &BTreeMap<String, u64>,
     by_file_timeout: &BTreeMap<String, u64>,
 ) -> Vec<FileBreakdown> {
-    let _ = survivors;
     let mut all_files: BTreeMap<String, FileBreakdown> = BTreeMap::new();
     for (file, count) in by_file_killed {
         all_files

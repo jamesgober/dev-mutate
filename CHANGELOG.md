@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-05-12
+
+Cleanup release surfaced by the post-polish audit pass. No behavior change.
+
+### Changed
+
+- `aggregate_breakdown()` (pub(crate) helper) no longer takes a `&[SurvivingMutant]` parameter — it was unused and silenced via `let _ = survivors;`. Removed both the parameter and the dead-binding, and updated the single caller in `runner.rs` to match. The function signature now mirrors exactly what it consumes (the three `by_file_*` BTreeMaps).
+
+[0.9.2]: https://github.com/jamesgober/dev-mutate/releases/tag/v0.9.2
+
 ## [0.9.1] - 2026-05-12
 
 Documentation and SEO pass. No code changes.
