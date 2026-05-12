@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-05-12
+
+Documentation and SEO pass. No code changes.
+
+### Changed
+
+- README header standardized: Rust logo image, MSRV badge between CI and docs.rs (was at the end, lowercase label), copyright block at bottom.
+- Subtitle now reads `MUTATION TESTING WITH KILL-RATE GATES` (was `MUTATION TESTING FOR RUST`). Surfaces the kill-rate gate as the defining capability.
+- Tagline rewritten to lead with the wrapped tool, the headline metric (kill rate), and the actual developer outcome (catch tests that don't assert).
+- `## The dev-* suite` retitled to `The dev-* collection` and expanded with the full 14-crate map.
+- `Cargo.toml` description rewritten: lists the metrics (kill rate, surviving-mutant evidence) and the gating mechanism (threshold).
+- `Cargo.toml` keywords retuned: dropped `verification` and `ai-tools`, added `cargo-mutants` and `ci` for crates.io search.
+
+### Added
+
+- "Part of the `dev-*` verification collection" block on the README, under the intro, linking the umbrella `dev-tools` crate.
+
+[0.9.1]: https://github.com/jamesgober/dev-mutate/releases/tag/v0.9.1
+
 ## [0.9.0] - 2026-05-12
 
 Foundation release. Replaces the `0.1.0` name-claim with full
