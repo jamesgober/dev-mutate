@@ -23,7 +23,7 @@ fn main() {
         let report = producer.produce();
         println!("{}", report.to_json().expect("serialize report"));
     } else {
-        println!("Set DEV_MUTATE_EXAMPLE_RUN=1 to spawn `cargo mutants --json`");
+        println!("Set DEV_MUTATE_EXAMPLE_RUN=1 to spawn `cargo mutants` in the current directory");
         println!("and print the resulting JSON report.");
     }
 }

@@ -49,7 +49,32 @@ let run = MutateRun::new("my-crate", "0.1.0");
 pub fn execute(&self) -> Result<MutateResult, MutateError>
 ```
 
-Run mutation testing via `cargo-mutants`.
+Run `cargo mutants --output <dir>` and parse the
+`mutants.out/outcomes.json` it writes.
+
+Returns:
+- `Ok(MutateResult)` when cargo-mutants exits 0 (all caught), 2 (some
+  missed) or 3 (some timed out).
+- `Err(MutateError::ToolNotInstalled)` if `cargo` cannot be started or
+  reports that the `mutants` subcommand does not exist.
+- `Err(MutateError::SubprocessFailed)` if the working directory is
+  missing, the tests already fail on the unmutated tree (exit 4), the
+  arguments are rejected (exit 1), or `outcomes.json` cannot be read.
+- `Err(MutateError::ParseError)` if `outcomes.json` is not the expected
+  shape.
+
+### Builder methods
+
+| Method                    | Effect                                                                  |
+|---------------------------|-------------------------------------------------------------------------|
+| `in_dir(dir)`             | Run from `dir` instead of the current directory.                         |
+| `workspace()`             | Pass `--workspace`.                                                      |
+| `jobs(n)`                 | Pass `--jobs <n>`.                                                       |
+| `timeout(d)`              | Per-mutant timeout, `--timeout <secs>` (whole seconds, at least 1).      |
+| `exclude_re(pattern)`     | Pass `--exclude-re`; matched against full mutant names. Repeatable.      |
+| `file(glob)`              | Pass `--file <glob>`. Repeatable.                                        |
+| `allow(desc)` / `allow_all(iter)` | Count survivors with this exact `description` as killed.         |
+| `output_dir(dir)`         | Keep `mutants.out/` under `dir` (default: temporary, removed afterwards). |
 
 ---
 
@@ -60,8 +85,13 @@ pub struct SurvivingMutant {
     pub file: String,
     pub line: u32,
     pub description: String,
+    pub function: Option<String>,
 }
 ```
+
+`description` is the mutant name without its location prefix, for
+example `replace > with == in is_pos`. `function` is the enclosing
+function when cargo-mutants reports it.
 
 A mutation the test suite did NOT catch. Tells you exactly where
 test coverage is weak.
@@ -79,6 +109,7 @@ pub struct MutateResult {
     pub mutants_survived: u64,
     pub mutants_timeout: u64,
     pub survivors: Vec<SurvivingMutant>,
+    pub files: Vec<FileBreakdown>,
 }
 ```
 
@@ -92,7 +123,8 @@ pub struct MutateResult {
 | `mutants_killed`  | `u64`                   | Mutants the test suite caught.                    |
 | `mutants_survived`| `u64`                   | Mutants the test suite missed.                    |
 | `mutants_timeout` | `u64`                   | Mutants that timed out (excluded from kill rate). |
-| `survivors`       | `Vec<SurvivingMutant>`  | Details of surviving mutants.                     |
+| `survivors`       | `Vec<SurvivingMutant>`  | Surviving mutants, sorted by file then line.      |
+| `files`           | `Vec<FileBreakdown>`    | Per-file `killed` / `survived` / `timeout` counts. |
 
 ### `MutateResult::kill_pct`
 
@@ -116,7 +148,7 @@ let r = MutateResult {
     name: "x".into(), version: "0.1.0".into(),
     mutants_total: 110, mutants_killed: 80,
     mutants_survived: 20, mutants_timeout: 10,
-    survivors: vec![],
+    survivors: vec![], files: vec![],
 };
 // 80 / (80 + 20) = 80%, timeouts excluded.
 assert!((r.kill_pct() - 80.0).abs() < 0.0001);
@@ -139,7 +171,7 @@ use dev_mutate::{MutateResult, MutateThreshold};
 #     name: "x".into(), version: "0.1.0".into(),
 #     mutants_total: 100, mutants_killed: 85,
 #     mutants_survived: 15, mutants_timeout: 0,
-#     survivors: vec![],
+#     survivors: vec![], files: vec![],
 # };
 let check = r.into_check_result(MutateThreshold::min_kill_pct(80.0));
 ```
@@ -156,7 +188,7 @@ pub enum MutateThreshold {
 
 ### `MutateThreshold::MinKillPct`
 
-Fail if `result.kill_pct() < pct`.
+Fail if `result.kill_pct() < pct`, or if `pct` is NaN.
 
 ### `MutateThreshold::min_kill_pct`
 

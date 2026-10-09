@@ -83,9 +83,24 @@ println!("{:?} {:?}", check.verdict, check.detail);
 | `workspace()`                     | Pass `--workspace` (mutate every workspace member).                   |
 | `jobs(n)`                         | Pass `--jobs <N>` (parallel mutation runs).                            |
 | `timeout(Duration)`               | Per-mutant timeout (`--timeout <secs>`).                              |
-| `exclude_re(pattern)`             | Skip files matching the regex (`--exclude-re <pattern>`). Repeatable. |
+| `exclude_re(pattern)`             | Skip mutants whose name matches the regex (`--exclude-re <pattern>`). Repeatable. |
 | `file(pattern)`                   | Restrict to matching files (`--file <pattern>`). Repeatable.          |
-| `allow(description)` / `allow_all(iter)` | Reclassify known survivors as killed (e.g. `replace + with -`). |
+| `allow(description)` / `allow_all(iter)` | Reclassify known survivors as killed (e.g. `replace + with - in add`). |
+| `output_dir(path)`                | Keep cargo-mutants' `mutants.out/` artifacts under `path`.            |
+
+## How results are collected
+
+`cargo mutants` prints progress for humans on stdout; its `--json` flag
+only applies to `--list`. `dev-mutate` therefore runs
+`cargo mutants --output <dir>` and reads the `mutants.out/outcomes.json`
+file the tool writes there. By default `<dir>` is a temporary directory
+that is removed after parsing; call `output_dir(path)` to keep the logs
+and diffs.
+
+If the test suite already fails on the unmutated tree, cargo-mutants
+tests no mutants and exits with code 4. `execute()` reports that as
+`MutateError::SubprocessFailed` (with the failing output) instead of a
+0% kill rate.
 
 ## Kill rate
 
@@ -126,15 +141,17 @@ for f in result.weakest_files(5) {
 use dev_mutate::{MutateRun, MutateThreshold};
 
 let run = MutateRun::new("my-crate", "0.1.0")
-    .allow("replace `+` with `-`")
-    .allow_all(["replace `<` with `<=`", "delete `!`"]);
+    .allow("replace + with - in add")
+    .allow_all(["replace < with <= in validate_range", "delete ! in is_empty"]);
 let _result = run.execute()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Allow-listed mutations are reclassified as *killed* (the user has
-explicitly declared them acceptable), so the kill rate goes up
-accordingly.
+The match is exact, against `SurvivingMutant::description`: the
+mutant name as cargo-mutants prints it, without the `file:line:col: `
+prefix. Allow-listed mutations are reclassified as *killed* (the user
+has explicitly declared them acceptable), in the totals and in the
+per-file breakdown, so the kill rate goes up accordingly.
 
 ## `Producer` integration
 
@@ -186,7 +203,7 @@ CARGO_TARGET_DIR=/tmp/mutate-target cargo test -- --ignored
     {
       "file": "src/parser.rs",
       "line": 142,
-      "description": "replace `<` with `<=`",
+      "description": "replace < with <= in validate_range",
       "function": "validate_range"
     }
   ],
@@ -234,7 +251,7 @@ kill-rate computation.
 
 ## Minimum supported Rust version
 
-`1.85` — pinned in `Cargo.toml` via `rust-version` and verified by
+`1.75` — pinned in `Cargo.toml` via `rust-version` and verified by
 the MSRV job in CI.
 
 ## License

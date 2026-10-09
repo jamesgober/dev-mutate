@@ -7,24 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.3] - 2026-05-18
+## [0.9.3] - 2026-10-09
 
-MSRV rollback to Rust 1.75. Backed off from 1.85 after `dev-fixtures`
-swapped `tempfile` → `mod-tempdir` 1.0 in its own 0.9.5 release,
-eliminating the `getrandom 0.4.2 → edition2024` chain that was the
-sole reason the dev-* collection sat at 1.85. No code changes here;
-this crate's own runtime dependencies have always been
-1.75-compatible.
+cargo-mutants results are read from `outcomes.json`, plus fixes from a
+review pass and the MSRV rollback to Rust 1.75. The rollback follows
+`dev-fixtures` 0.9.5 swapping `tempfile` for `mod-tempdir` 1.0, which
+removed the `getrandom 0.4.2 -> edition2024` chain that held the dev-*
+collection at 1.85.
+
+### Added
+
+- `MutateRun::output_dir(dir)` keeps cargo-mutants' `mutants.out/` in a
+  directory you choose. By default each run uses a fresh temporary
+  directory that is removed afterwards, so nothing is left in the
+  source tree. Outcomes older than the run in a kept directory are
+  rejected as stale.
+- `VERSION` constant with the crate version as compiled, so tools that
+  bundle this crate can report what is actually linked.
+
+### Fixed
+
+- **Every run reported 0 mutants and a 0% kill rate.** Results were read
+  from stdout as NDJSON via `--json`, but cargo-mutants only honours
+  `--json` with `--list`; a real run prints text. Results now come from
+  `mutants.out/outcomes.json`, checked against real cargo-mutants 27
+  runs with caught, missed, timeout, unviable and baseline-failure
+  outcomes. The deprecated `--no-shuffle` flag is no longer passed.
+- A test suite that already fails on the unmutated tree (exit code 4)
+  was reported as a 0% kill rate. It is now `SubprocessFailed` with
+  stderr and the tail of the output. Exit codes 0, 2 and 3 are parsed;
+  anything else is an error.
+- Survivor descriptions carried a `file:line:col:` prefix, so `allow()`
+  entries written from cargo-mutants' own output never matched. The
+  allow-list also updated the totals but not the per-file breakdown;
+  both agree now.
+- Any failing `cargo mutants --version` was reported as
+  `ToolNotInstalled`. Only cargo's "no such command" error means not
+  installed now; the probe runs in the work dir, and a missing work dir
+  gives a clear error.
+- A NaN threshold passed every run, and huge deserialized counts could
+  overflow `kill_pct`. Both fixed.
+- The producer test was `#[ignore]`d; it now runs against an empty temp
+  dir.
 
 ### Changed
 
-- `rust-version` lowered from `1.85` to `1.75` in `Cargo.toml`.
-- MSRV badge in README updated from `1.85+` to `1.75+`.
+- `rust-version` lowered from `1.85` to `1.75`. CI's MSRV job now
+  builds on 1.75 against an MSRV-compatible lockfile; it was still
+  pinned to 1.85.
 
-### Notes
+### Documentation
 
-- No code change. No API change. No new dependencies.
-- Library, examples, and tests all build clean on Rust 1.75 (verified).
+- `exclude_re` matches mutant names, not files.
+- Allow-list examples use the real description format.
+- New README section "How results are collected"; MSRV section says
+  1.75.
+- `docs/API.md` fields and examples fixed (missing `files` and
+  `function`).
 
 [0.9.3]: https://github.com/jamesgober/dev-mutate/releases/tag/v0.9.3
 

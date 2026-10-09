@@ -64,17 +64,42 @@ impl Producer for MutateProducer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dev_report::Verdict;
+
+    fn assert_single_critical_fail(report: &Report) {
+        assert_eq!(report.subject, "self");
+        assert_eq!(report.checks.len(), 1);
+        let check = &report.checks[0];
+        assert_eq!(check.name, "mutate::self");
+        assert_eq!(check.verdict, Verdict::Fail);
+        assert_eq!(check.severity, Some(Severity::Critical));
+        assert!(check.has_tag("subprocess"));
+    }
 
     #[test]
-    #[ignore = "spawns inner `cargo mutants` which deadlocks on the workspace target-dir lock when run from `cargo test`; run with CARGO_TARGET_DIR outside the workspace via `cargo test -- --ignored`"]
-    fn produce_returns_report_regardless_of_subprocess() {
-        // Contract: returns a Report, never panics.
+    fn produce_maps_run_failure_to_critical_fail() {
+        // An empty directory has no Cargo.toml, so the run fails fast
+        // whether or not cargo-mutants is installed.
+        let dir = tempfile::tempdir().unwrap();
         let producer = MutateProducer::new(
-            MutateRun::new("self", "0.0.0"),
+            MutateRun::new("self", "0.0.0").in_dir(dir.path()),
+            MutateThreshold::min_kill_pct(70.0),
+        );
+        assert_single_critical_fail(&producer.produce());
+    }
+
+    #[test]
+    fn produce_maps_missing_workdir_to_critical_fail() {
+        let producer = MutateProducer::new(
+            MutateRun::new("self", "0.0.0").in_dir("definitely/not/a/dir/7f3a"),
             MutateThreshold::min_kill_pct(70.0),
         );
         let report = producer.produce();
-        assert_eq!(report.subject, "self");
-        assert!(!report.checks.is_empty());
+        assert_single_critical_fail(&report);
+        assert!(report.checks[0]
+            .detail
+            .as_deref()
+            .unwrap_or("")
+            .contains("does not exist"));
     }
 }

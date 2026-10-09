@@ -15,7 +15,7 @@ fn main() {
         .timeout(Duration::from_secs(120))
         .exclude_re(r"^src/generated/")
         .file("src/lib.rs")
-        .allow("replace `+` with `-`");
+        .allow("replace + with - in add");
 
     match run.execute() {
         Ok(result) => {

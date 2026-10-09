@@ -18,7 +18,7 @@ fn main() {
         survivors: vec![SurvivingMutant {
             file: "src/parser.rs".into(),
             line: 142,
-            description: "replace `<` with `<=`".into(),
+            description: "replace < with <= in validate_range".into(),
             function: Some("validate_range".into()),
         }],
         files: vec![

@@ -45,6 +45,18 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+/// Version of this crate as compiled, taken from its `Cargo.toml`.
+///
+/// Lets tools that bundle this crate, such as the `dev` CLI in
+/// `dev-tools`, report the version that is actually linked.
+///
+/// # Example
+///
+/// ```
+/// assert!(!dev_mutate::VERSION.is_empty());
+/// ```
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -88,6 +100,7 @@ pub struct MutateRun {
     exclude_re: Vec<String>,
     file_filters: Vec<String>,
     allow_list: Vec<String>,
+    output_dir: Option<PathBuf>,
 }
 
 impl MutateRun {
@@ -106,6 +119,7 @@ impl MutateRun {
             exclude_re: Vec::new(),
             file_filters: Vec::new(),
             allow_list: Vec::new(),
+            output_dir: None,
         }
     }
 
@@ -128,14 +142,21 @@ impl MutateRun {
         self
     }
 
-    /// Per-mutant timeout (passed through as `--timeout <secs>`).
+    /// Per-mutant timeout (passed through as `--timeout <secs>`, whole
+    /// seconds, at least 1). Without it cargo-mutants picks a test
+    /// timeout from the baseline test time.
     pub fn timeout(mut self, d: Duration) -> Self {
         self.timeout = Some(d);
         self
     }
 
-    /// Skip files matching the given regex. Repeatable; maps to
-    /// `--exclude-re <pattern>` per invocation.
+    /// Skip mutants whose name matches the given regex. Repeatable; maps
+    /// to `--exclude-re <pattern>` per invocation.
+    ///
+    /// cargo-mutants matches against the full mutant name as shown by
+    /// `cargo mutants --list`, for example
+    /// `src/lib.rs:2:35: replace > with == in is_pos`, so a pattern can
+    /// target a path prefix, a function, or a kind of mutation.
     pub fn exclude_re(mut self, pattern: impl Into<String>) -> Self {
         self.exclude_re.push(pattern.into());
         self
@@ -148,8 +169,10 @@ impl MutateRun {
         self
     }
 
-    /// Suppress a known-survivor by descriptor. The match is on the
-    /// `description` field of `SurvivingMutant` (e.g. `"replace + with -"`).
+    /// Suppress a known survivor. The match is exact, on the
+    /// `description` field of [`SurvivingMutant`]: the mutant name
+    /// without its location, e.g. `"replace > with == in is_pos"`.
+    /// Allowed survivors are counted as killed.
     pub fn allow(mut self, description: impl Into<String>) -> Self {
         self.allow_list.push(description.into());
         self
@@ -166,6 +189,17 @@ impl MutateRun {
         self
     }
 
+    /// Keep cargo-mutants' artifacts in `<dir>/mutants.out/` (logs,
+    /// diffs, `caught.txt`, `missed.txt`, `outcomes.json`).
+    ///
+    /// Passed as `--output <dir>`. Without this, the run writes them to a
+    /// fresh temporary directory that is deleted once the results are
+    /// parsed, so nothing is left in your source tree.
+    pub fn output_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.output_dir = Some(dir.into());
+        self
+    }
+
     /// Subject name passed in via [`new`](Self::new).
     pub fn subject(&self) -> &str {
         &self.name
@@ -178,15 +212,21 @@ impl MutateRun {
 
     /// Execute the run.
     ///
-    /// Spawns `cargo mutants --json` with the configured flags. Tool
-    /// absence, subprocess failure, and parse failure surface as
-    /// typed [`MutateError`] variants. No panics.
+    /// Spawns `cargo mutants --output <dir>` with the configured flags and
+    /// reads the `mutants.out/outcomes.json` it writes. Tool absence,
+    /// subprocess failure (including a test suite that already fails
+    /// before any mutation), and parse failure surface as typed
+    /// [`MutateError`] variants. No panics.
     pub fn execute(&self) -> Result<MutateResult, MutateError> {
         runner::run(self)
     }
 
     pub(crate) fn workdir_path(&self) -> Option<&std::path::Path> {
         self.workdir.as_deref()
+    }
+
+    pub(crate) fn output_dir_path(&self) -> Option<&std::path::Path> {
+        self.output_dir.as_deref()
     }
 
     pub(crate) fn workspace_flag(&self) -> bool {
@@ -252,11 +292,7 @@ pub struct FileBreakdown {
 impl FileBreakdown {
     /// Kill rate for this file in `[0.0, 100.0]`. Timeouts excluded.
     pub fn kill_pct(&self) -> f64 {
-        let counted = self.killed + self.survived;
-        if counted == 0 {
-            return 0.0;
-        }
-        (self.killed as f64 / counted as f64) * 100.0
+        ratio_pct(self.killed, self.survived)
     }
 }
 
@@ -291,21 +327,23 @@ impl MutateResult {
     ///
     /// `killed / (killed + survived) * 100`. Timeouts excluded.
     pub fn kill_pct(&self) -> f64 {
-        let counted = self.mutants_killed + self.mutants_survived;
-        if counted == 0 {
-            return 0.0;
-        }
-        (self.mutants_killed as f64 / counted as f64) * 100.0
+        ratio_pct(self.mutants_killed, self.mutants_survived)
     }
 
     /// `true` when the kill rate meets or exceeds the given threshold.
     ///
     /// Exists so callers can avoid recomputing `kill_pct` and the
-    /// comparison logic locally.
+    /// comparison logic locally. A NaN threshold is never met.
     pub fn meets(&self, threshold: MutateThreshold) -> bool {
         match threshold {
-            MutateThreshold::MinKillPct(target) => self.kill_pct() >= target,
+            MutateThreshold::MinKillPct(target) => Self::kill_pct_meets(self.kill_pct(), target),
         }
+    }
+
+    /// Shared comparison for [`meets`](Self::meets) and
+    /// [`into_check_result`](Self::into_check_result). NaN fails closed.
+    fn kill_pct_meets(kill_pct: f64, target: f64) -> bool {
+        !kill_pct.is_nan() && !target.is_nan() && kill_pct >= target
     }
 
     /// Files with the lowest kill rate, ascending. Useful for emitting
@@ -336,11 +374,11 @@ impl MutateResult {
             "kill rate {:.2}% ({}/{}; {} timeouts; {} survivors)",
             kill_pct,
             self.mutants_killed,
-            self.mutants_killed + self.mutants_survived,
+            self.mutants_killed.saturating_add(self.mutants_survived),
             self.mutants_timeout,
             self.mutants_survived
         );
-        let mut check = if kill_pct < target {
+        let mut check = if !Self::kill_pct_meets(kill_pct, target) {
             CheckResult::fail(name, Severity::Warning).with_detail(detail)
         } else {
             CheckResult::pass(name).with_detail(detail)
@@ -422,8 +460,17 @@ impl std::fmt::Display for MutateError {
 impl std::error::Error for MutateError {}
 
 // ---------------------------------------------------------------------------
-// Helpers for the runner
+// Helpers
 // ---------------------------------------------------------------------------
+
+/// `killed / (killed + survived) * 100`, or `0.0` when both are zero.
+/// Computed in `f64` so huge counts cannot overflow.
+fn ratio_pct(killed: u64, survived: u64) -> f64 {
+    if killed == 0 && survived == 0 {
+        return 0.0;
+    }
+    (killed as f64 / (killed as f64 + survived as f64)) * 100.0
+}
 
 pub(crate) fn aggregate_breakdown(
     by_file_killed: &BTreeMap<String, u64>,
@@ -476,7 +523,7 @@ mod tests {
         MutateResult {
             name: "x".into(),
             version: "0.1.0".into(),
-            mutants_total: killed + survived + timeout,
+            mutants_total: killed.saturating_add(survived).saturating_add(timeout),
             mutants_killed: killed,
             mutants_survived: survived,
             mutants_timeout: timeout,
@@ -514,6 +561,40 @@ mod tests {
         let c = r.into_check_result(MutateThreshold::min_kill_pct(80.0));
         assert_eq!(c.verdict, Verdict::Fail);
         assert_eq!(c.severity, Some(Severity::Warning));
+    }
+
+    #[test]
+    fn nan_threshold_fails_closed() {
+        let r = sample(85, 15, 0);
+        assert!(!r.meets(MutateThreshold::min_kill_pct(f64::NAN)));
+        let c = r.into_check_result(MutateThreshold::min_kill_pct(f64::NAN));
+        assert_eq!(c.verdict, Verdict::Fail);
+    }
+
+    #[test]
+    fn huge_counts_do_not_overflow() {
+        let r = sample(u64::MAX, u64::MAX, 0);
+        assert!((r.kill_pct() - 50.0).abs() < 1e-9);
+        let f = FileBreakdown {
+            file: "x".into(),
+            killed: u64::MAX,
+            survived: 1,
+            timeout: 0,
+        };
+        assert!(f.kill_pct() <= 100.0);
+        // The detail string sums the counts too.
+        let c = r.into_check_result(MutateThreshold::min_kill_pct(10.0));
+        assert_eq!(c.verdict, Verdict::Pass);
+    }
+
+    #[test]
+    fn output_dir_is_recorded() {
+        let r = MutateRun::new("x", "0.1.0").output_dir("target/mutants");
+        assert_eq!(
+            r.output_dir_path(),
+            Some(std::path::Path::new("target/mutants"))
+        );
+        assert_eq!(MutateRun::new("x", "0.1.0").output_dir_path(), None);
     }
 
     #[test]
