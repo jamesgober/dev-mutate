@@ -363,8 +363,12 @@ fn strip_location<'a>(name: &'a str, file: &str) -> &'a str {
 
 /// Parse a cargo-mutants `outcomes.json` document.
 ///
-/// Survivors whose description is in `allow` are counted as killed, both
-/// in the totals and in the per-file breakdown.
+/// Survivors matched by `allow` are left out of the killed and survived
+/// counts (and so out of the kill rate) and out of the per-file
+/// breakdown. They still count in `mutants_total`. An entry matches a
+/// survivor's full cargo-mutants name (`src/lib.rs:2:35: replace > with
+/// == in is_pos`), or its description without the location when exactly
+/// one survivor has that description.
 pub(crate) fn parse_outcomes(
     json: &str,
     subject: &str,
@@ -389,6 +393,33 @@ pub(crate) fn parse_outcomes(
     let mut by_file_survived: BTreeMap<String, u64> = BTreeMap::new();
     let mut by_file_timeout: BTreeMap<String, u64> = BTreeMap::new();
 
+    // How many survivors share each description. A description-only
+    // allow entry is used only when it names exactly one survivor, so
+    // one entry can never hide several distinct mutants.
+    let mut missed_descriptions: BTreeMap<String, u64> = BTreeMap::new();
+    for record in records {
+        let Some(m) = mutant_of(record) else {
+            continue;
+        };
+        let outcome = record
+            .get("summary")
+            .or_else(|| record.get("outcome"))
+            .map_or(Outcome::Other, outcome_from_value);
+        if outcome == Outcome::Missed {
+            let file = str_field(m, "file").unwrap_or("<unknown>");
+            *missed_descriptions
+                .entry(mutant_description(m, file))
+                .or_insert(0) += 1;
+        }
+    }
+    let is_allowed = |m: &Value, description: &str| -> bool {
+        let full = str_field(m, "name");
+        allow.iter().any(|a| {
+            full.is_some_and(|n| n == a)
+                || (a == description && missed_descriptions.get(description) == Some(&1))
+        })
+    };
+
     for record in records {
         // Only mutant scenarios reflect test quality; skip the baseline.
         let Some(m) = mutant_of(record) else {
@@ -410,10 +441,9 @@ pub(crate) fn parse_outcomes(
             }
             Outcome::Missed => {
                 let description = mutant_description(m, &file);
-                if allow.iter().any(|a| a == &description) {
-                    // The caller declared this survivor acceptable.
-                    killed += 1;
-                    *by_file_killed.entry(file).or_insert(0) += 1;
+                if is_allowed(m, &description) {
+                    // The caller declared this survivor acceptable. It
+                    // was not killed, so it stays out of the kill rate.
                 } else {
                     survived += 1;
                     *by_file_survived.entry(file.clone()).or_insert(0) += 1;
@@ -547,14 +577,44 @@ mod tests {
     }
 
     #[test]
-    fn allow_list_moves_survivor_to_killed_in_totals_and_per_file() {
+    fn allowed_survivor_is_excluded_not_killed() {
         let allow = vec!["replace > with == in is_pos".to_string()];
         let r = parse_outcomes(REAL_OUTCOMES_27, "x", "0.1.0", &allow).unwrap();
-        assert_eq!(r.mutants_killed, 2);
+        assert_eq!(r.mutants_killed, 1);
         assert_eq!(r.mutants_survived, 1);
         assert_eq!(r.survivors.len(), 1);
         let lib = r.files.iter().find(|f| f.file == "src/lib.rs").unwrap();
-        assert_eq!((lib.killed, lib.survived), (2, 1));
+        assert_eq!((lib.killed, lib.survived), (1, 1));
+
+        // The full name with its location matches too.
+        let allow = vec!["src/lib.rs:2:35: replace > with == in is_pos".to_string()];
+        let r = parse_outcomes(REAL_OUTCOMES_27, "x", "0.1.0", &allow).unwrap();
+        assert_eq!((r.mutants_killed, r.mutants_survived), (1, 1));
+    }
+
+    #[test]
+    fn one_description_cannot_hide_several_survivors() {
+        // `(a > 0) && (b > 0)`: two mutants share one description.
+        let doc = r#"{"outcomes":[
+            {"scenario":"Baseline","summary":"Success"},
+            {"scenario":{"Mutant":{"name":"src/lib.rs:1:30: replace > with == in both","file":"src/lib.rs"}},"summary":"MissedMutant"},
+            {"scenario":{"Mutant":{"name":"src/lib.rs:1:42: replace > with == in both","file":"src/lib.rs"}},"summary":"MissedMutant"},
+            {"scenario":{"Mutant":{"name":"src/lib.rs:1:30: replace > with < in both","file":"src/lib.rs"}},"summary":"MissedMutant"}
+        ]}"#;
+        let allow = vec!["replace > with == in both".to_string()];
+        let r = parse_outcomes(doc, "x", "0.1.0", &allow).unwrap();
+        assert_eq!(r.mutants_killed, 0);
+        assert_eq!(r.mutants_survived, 3);
+        assert_eq!(r.kill_pct(), 0.0);
+
+        // Naming each one by its full name excludes just those.
+        let allow = vec![
+            "src/lib.rs:1:30: replace > with == in both".to_string(),
+            "src/lib.rs:1:42: replace > with == in both".to_string(),
+        ];
+        let r = parse_outcomes(doc, "x", "0.1.0", &allow).unwrap();
+        assert_eq!((r.mutants_killed, r.mutants_survived), (0, 1));
+        assert_eq!(r.mutants_total, 3);
     }
 
     #[test]

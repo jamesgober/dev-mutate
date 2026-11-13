@@ -43,7 +43,8 @@ impl Producer for MutateProducer {
     fn produce(&self) -> Report {
         let subject = self.run.subject().to_string();
         let version = self.run.subject_version().to_string();
-        let mut report = Report::new(&subject, &version).with_producer("dev-mutate");
+        let mut report =
+            Report::new(subject.as_str(), version.as_str()).with_producer("dev-mutate");
         match self.run.execute() {
             Ok(result) => {
                 report.push(result.into_check_result(self.threshold));
