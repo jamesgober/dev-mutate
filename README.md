@@ -85,7 +85,7 @@ println!("{:?} {:?}", check.verdict, check.detail);
 | `timeout(Duration)`               | Per-mutant timeout (`--timeout <secs>`).                              |
 | `exclude_re(pattern)`             | Skip mutants whose name matches the regex (`--exclude-re <pattern>`). Repeatable. |
 | `file(pattern)`                   | Restrict to matching files (`--file <pattern>`). Repeatable.          |
-| `allow(description)` / `allow_all(iter)` | Reclassify known survivors as killed (e.g. `replace + with - in add`). |
+| `allow(name)` / `allow_all(iter)` | Leave known survivors out of the kill rate. Match the full mutant name (`src/lib.rs:1:39: replace + with - in add`), or the description alone when only one survivor has it. |
 | `output_dir(path)`                | Keep cargo-mutants' `mutants.out/` artifacts under `path`.            |
 
 ## How results are collected

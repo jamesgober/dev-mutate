@@ -169,10 +169,18 @@ impl MutateRun {
         self
     }
 
-    /// Suppress a known survivor. The match is exact, on the
-    /// `description` field of [`SurvivingMutant`]: the mutant name
-    /// without its location, e.g. `"replace > with == in is_pos"`.
-    /// Allowed survivors are counted as killed.
+    /// Suppress a known survivor.
+    ///
+    /// The entry is matched exactly against the survivor's full
+    /// cargo-mutants name, location included
+    /// (`"src/lib.rs:2:35: replace > with == in is_pos"`), or against
+    /// its `description` without the location
+    /// (`"replace > with == in is_pos"`) when exactly one survivor has
+    /// that description. Several mutants in one function can share a
+    /// description; name each of those by its full name.
+    ///
+    /// Allowed survivors are left out of the kill rate: they count as
+    /// neither killed nor survived, only in `mutants_total`.
     pub fn allow(mut self, description: impl Into<String>) -> Self {
         self.allow_list.push(description.into());
         self

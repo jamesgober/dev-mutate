@@ -73,7 +73,7 @@ Returns:
 | `timeout(d)`              | Per-mutant timeout, `--timeout <secs>` (whole seconds, at least 1).      |
 | `exclude_re(pattern)`     | Pass `--exclude-re`; matched against full mutant names. Repeatable.      |
 | `file(glob)`              | Pass `--file <glob>`. Repeatable.                                        |
-| `allow(desc)` / `allow_all(iter)` | Count survivors with this exact `description` as killed.         |
+| `allow(name)` / `allow_all(iter)` | Leave matching survivors out of the kill rate: exact full name, or a description only one survivor has. |
 | `output_dir(dir)`         | Keep `mutants.out/` under `dir` (default: temporary, removed afterwards). |
 
 ---

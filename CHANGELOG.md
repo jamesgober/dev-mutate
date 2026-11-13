@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-11-12
+
+### Fixed
+
+- One allow-list entry could hide several distinct survivors. Entries
+  matched the description without its location, and several mutants in
+  one function share a description (`(a > 0) && (b > 0)` gives two
+  `replace > with == in both`). An entry now matches a survivor's full
+  name, location included, or a description that exactly one survivor
+  has.
+- Allowed survivors were added to the killed count, which raised the
+  kill rate. They are now left out of both killed and survived (they
+  still count in `mutants_total`).
+
+### Changed
+
+- Depends on `dev-report` 0.9.9 from crates.io instead of a sibling
+  checkout.
+
+[0.9.4]: https://github.com/jamesgober/dev-mutate/releases/tag/v0.9.4
+
 ## [0.9.3] - 2026-10-09
 
 cargo-mutants results are read from `outcomes.json`, plus fixes from a
